@@ -3,26 +3,37 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Vocabulary Book</title>
+    <meta name="theme-color" content="#f5f5f7">
+    <title>Hongxiang Vocabulary</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="./style.css">
   </head>
   <body>
     <main class="app-shell">
       <aside class="sidebar">
         <div class="brand">
-          <div class="brand-mark">V</div>
+          <img class="brand-mark" src="./favicon.svg" alt="" aria-hidden="true">
           <div>
-            <h1>Vocabulary</h1>
-            <p>Saved from Easydict</p>
+            <h1>Hongxiang Vocabulary</h1>
+            <p>Saved from Hongxiang dict</p>
           </div>
         </div>
 
-        <nav class="filters" aria-label="Vocabulary filters">
-          <button class="filter active" type="button" data-filter="all">All words</button>
-          <button class="filter" type="button" data-filter="new">New</button>
+        <nav class="filters" aria-label="Vocabulary views">
+          <button class="filter active" type="button" data-filter="review">Check mastery</button>
           <button class="filter" type="button" data-filter="learning">Learning</button>
           <button class="filter" type="button" data-filter="mastered">Mastered</button>
+          <button class="filter secondary" type="button" data-filter="all">All words</button>
         </nav>
+
+        <section class="theme-panel" aria-label="Theme">
+          <label for="themeSelect">Theme</label>
+          <select id="themeSelect">
+            <option value="mist">Mist</option>
+            <option value="graphite">Graphite</option>
+            <option value="paper">Paper</option>
+          </select>
+        </section>
 
         <section class="sidebar-panel">
           <div class="metric">
@@ -30,12 +41,12 @@
             <strong id="totalCount">0</strong>
           </div>
           <div class="metric">
-            <span>Need review</span>
-            <strong id="newCount">0</strong>
+            <span>Learning</span>
+            <strong id="learningCount">0</strong>
           </div>
           <div class="metric">
-            <span>Reviewed</span>
-            <strong id="reviewedCount">0</strong>
+            <span>Mastered</span>
+            <strong id="masteredCount">0</strong>
           </div>
         </section>
       </aside>
@@ -44,7 +55,7 @@
         <header class="toolbar">
           <div>
             <p class="eyebrow">Personal word bank</p>
-            <h2 id="pageTitle">All words</h2>
+            <h2 id="pageTitle">Check mastery</h2>
           </div>
           <div class="toolbar-actions">
             <input id="search" type="search" placeholder="Search word, meaning, or service">
@@ -52,12 +63,17 @@
           </div>
         </header>
 
-        <section class="review-strip" aria-label="Review prompt">
-          <div>
+        <section id="reviewDeck" class="review-deck" aria-label="Mastery check">
+          <div class="review-copy">
             <span id="summary">Loading saved words...</span>
             <strong id="todayWord">Ready when you are.</strong>
           </div>
-          <button id="shuffle" type="button">Pick one</button>
+          <div class="review-actions">
+            <button id="reveal" type="button">Reveal</button>
+            <button id="keepLearning" type="button">Keep learning</button>
+            <button id="markMastered" type="button">Mastered</button>
+            <button id="shuffle" type="button">Next</button>
+          </div>
         </section>
 
         <section class="content-grid">

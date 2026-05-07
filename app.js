@@ -1,12 +1,14 @@
 const API_URL = 'https://script.google.com/macros/s/AKfycbzktCl5zINU3p1DUX4KKaIzgVHkB3YiJ_hwmKZ7hQBgZs69P6csIODeKGLBI-PmGgea/exec';
 const AUTO_REFRESH_INTERVAL_MS = 15000;
+const THEME_KEY = 'hongxiang-vocabulary-theme';
 
 const state = {
   records: [],
   query: '',
-  filter: 'all',
+  filter: 'review',
   selectedId: '',
   isLoading: false,
+  isRevealed: false,
 };
 
 const els = {
@@ -14,28 +16,49 @@ const els = {
   detailPanel: document.querySelector('#detailPanel'),
   summary: document.querySelector('#summary'),
   totalCount: document.querySelector('#totalCount'),
-  newCount: document.querySelector('#newCount'),
-  reviewedCount: document.querySelector('#reviewedCount'),
+  learningCount: document.querySelector('#learningCount'),
+  masteredCount: document.querySelector('#masteredCount'),
   search: document.querySelector('#search'),
   refresh: document.querySelector('#refresh'),
   shuffle: document.querySelector('#shuffle'),
+  reveal: document.querySelector('#reveal'),
+  keepLearning: document.querySelector('#keepLearning'),
+  markMastered: document.querySelector('#markMastered'),
   todayWord: document.querySelector('#todayWord'),
   pageTitle: document.querySelector('#pageTitle'),
+  themeSelect: document.querySelector('#themeSelect'),
   filters: [...document.querySelectorAll('.filter')],
 };
+
+const savedTheme = localStorage.getItem(THEME_KEY) || 'mist';
+document.documentElement.dataset.theme = savedTheme;
+els.themeSelect.value = savedTheme;
+
+els.themeSelect.addEventListener('change', event => {
+  const theme = event.target.value;
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem(THEME_KEY, theme);
+});
 
 els.search.addEventListener('input', event => {
   state.query = event.target.value.trim().toLowerCase();
   render();
 });
 
-els.refresh.addEventListener('click', loadRecords);
-els.shuffle.addEventListener('click', selectRandomWord);
+els.refresh.addEventListener('click', () => loadRecords());
+els.shuffle.addEventListener('click', selectRandomLearningWord);
+els.reveal.addEventListener('click', () => {
+  state.isRevealed = true;
+  render();
+});
+els.keepLearning.addEventListener('click', () => reviewSelected('learning'));
+els.markMastered.addEventListener('click', () => reviewSelected('mastered'));
 
 els.filters.forEach(button => {
   button.addEventListener('click', () => {
     state.filter = button.dataset.filter;
     state.selectedId = '';
+    state.isRevealed = false;
     render();
   });
 });
@@ -110,38 +133,59 @@ function loadJsonp(url) {
 function normalizeRecords(records) {
   return records
     .filter(record => record.word)
-    .map(record => ({
-      ...record,
-      id: record.id || record.word,
-      status: record.status || 'new',
-      reviewCount: Number(record.reviewCount || 0),
-    }))
+    .map(record => {
+      const status = record.status === 'mastered' ? 'mastered' : 'learning';
+      return {
+        ...record,
+        id: record.id || record.word,
+        status,
+        reviewCount: Number(record.reviewCount || 0),
+      };
+    })
     .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 }
 
 function render() {
   const filtered = filteredRecords();
-  const selected = state.records.find(record => record.id === state.selectedId) || filtered[0];
+  const selected = selectedRecord(filtered);
   state.selectedId = selected?.id || '';
 
   els.filters.forEach(button => {
     button.classList.toggle('active', button.dataset.filter === state.filter);
   });
 
+  const learningRecords = state.records.filter(record => record.status !== 'mastered');
+  const masteredRecords = state.records.filter(record => record.status === 'mastered');
+
   els.pageTitle.textContent = titleForFilter(state.filter);
   els.totalCount.textContent = state.records.length;
-  els.newCount.textContent = state.records.filter(record => record.status === 'new').length;
-  els.reviewedCount.textContent = state.records.filter(record => record.reviewCount > 0).length;
-  els.summary.textContent = `${filtered.length} word${filtered.length === 1 ? '' : 's'} shown`;
-  els.todayWord.textContent = selected ? `${selected.word} · ${firstLine(selected.translation)}` : 'No saved words yet.';
+  els.learningCount.textContent = learningRecords.length;
+  els.masteredCount.textContent = masteredRecords.length;
+  els.summary.textContent = summaryText(filtered, learningRecords);
+  els.todayWord.textContent = selected ? deckText(selected) : 'No learning words yet.';
 
   renderList(filtered);
   renderDetail(selected);
+  updateReviewControls(selected);
+}
+
+function selectedRecord(filtered) {
+  const existing = state.records.find(record => record.id === state.selectedId);
+  if (existing && filtered.some(record => record.id === existing.id)) {
+    return existing;
+  }
+
+  return filtered[0] || null;
 }
 
 function filteredRecords() {
   return state.records.filter(record => {
-    const matchesFilter = state.filter === 'all' || record.status === state.filter;
+    const matchesFilter = (
+      state.filter === 'all' ||
+      (state.filter === 'review' && record.status !== 'mastered') ||
+      (state.filter === 'learning' && record.status !== 'mastered') ||
+      (state.filter === 'mastered' && record.status === 'mastered')
+    );
     const searchable = `${record.word} ${record.translation} ${record.service}`.toLowerCase();
     return matchesFilter && searchable.includes(state.query);
   });
@@ -166,6 +210,7 @@ function renderList(records) {
   els.wordList.querySelectorAll('.word-row').forEach(row => {
     row.addEventListener('click', () => {
       state.selectedId = row.dataset.id;
+      state.isRevealed = false;
       render();
     });
   });
@@ -182,6 +227,9 @@ function renderDetail(record) {
     return;
   }
 
+  const shouldHideMeaning = state.filter === 'review' && !state.isRevealed && record.status !== 'mastered';
+  const meaning = shouldHideMeaning ? 'Meaning hidden. Try recalling it first, then reveal.' : (record.translation || 'No translation saved yet.');
+
   els.detailPanel.innerHTML = `
     <div class="detail-head">
       <div>
@@ -193,27 +241,27 @@ function renderDetail(record) {
 
     <section class="detail-section">
       <h4>Meaning</h4>
-      <p class="meaning">${escapeHtml(record.translation || 'No translation saved yet.')}</p>
+      <p class="meaning ${shouldHideMeaning ? 'masked' : ''}">${escapeHtml(meaning)}</p>
     </section>
 
     <section class="detail-section compact">
-      <div><span>Service</span><strong>${escapeHtml(record.service || 'Easydict')}</strong></div>
+      <div><span>Service</span><strong>${escapeHtml(record.service || 'Hongxiang dict')}</strong></div>
       <div><span>Language</span><strong>${escapeHtml(record.fromLanguage || 'auto')} -> ${escapeHtml(record.toLanguage || '')}</strong></div>
       <div><span>Saved</span><strong>${formatDate(record.createdAt)}</strong></div>
       <div><span>Reviews</span><strong>${record.reviewCount || 0}</strong></div>
     </section>
 
     <section class="detail-section">
-      <h4>Review prompt</h4>
-      <p class="prompt">Cover the meaning, say the word aloud, then explain it in your own sentence.</p>
+      <h4>Check</h4>
+      <p class="prompt">Recall the meaning first. Reveal it, then keep it in Learning or move it to Mastered.</p>
     </section>
 
     <section class="detail-section">
       <h4>Actions</h4>
       <div class="detail-actions">
-        <button type="button" data-action="review" data-status="learning">Reviewed</button>
-        <button type="button" data-action="status" data-status="learning">Learning</button>
-        <button type="button" data-action="status" data-status="mastered">Mastered</button>
+        <button type="button" data-action="review" data-status="learning">Keep learning</button>
+        <button type="button" data-action="review" data-status="mastered">Mark mastered</button>
+        <button type="button" data-action="status" data-status="learning">Move to Learning</button>
         <button class="danger" type="button" data-action="delete">Delete</button>
       </div>
     </section>
@@ -235,29 +283,40 @@ async function handleRecordAction(record, button) {
 
   button.disabled = true;
   try {
-    await postAction({
-      action,
-      status,
-      word: record.word,
-    });
-
-    if (action === 'delete') {
-      state.records = state.records.filter(item => item.id !== record.id);
-      state.selectedId = '';
-    } else if (action === 'review') {
-      record.status = status;
-      record.reviewCount = Number(record.reviewCount || 0) + 1;
-      record.lastReviewedAt = new Date().toISOString();
-    } else if (action === 'status') {
-      record.status = status;
-    }
-
-    render();
+    await applyRecordAction(record, action, status);
   } catch (error) {
     window.alert(`Action failed: ${error.message}`);
   } finally {
     button.disabled = false;
   }
+}
+
+async function reviewSelected(status) {
+  const record = state.records.find(item => item.id === state.selectedId);
+  if (!record) return;
+  await applyRecordAction(record, 'review', status);
+}
+
+async function applyRecordAction(record, action, status) {
+  await postAction({
+    action,
+    status,
+    word: record.word,
+  });
+
+  if (action === 'delete') {
+    state.records = state.records.filter(item => item.id !== record.id);
+    state.selectedId = '';
+  } else if (action === 'review') {
+    record.status = status;
+    record.reviewCount = Number(record.reviewCount || 0) + 1;
+    record.lastReviewedAt = new Date().toISOString();
+  } else if (action === 'status') {
+    record.status = status;
+  }
+
+  state.isRevealed = false;
+  render();
 }
 
 async function postAction(payload) {
@@ -274,21 +333,44 @@ async function postAction(payload) {
   return data;
 }
 
-function selectRandomWord() {
+function selectRandomLearningWord() {
   const records = filteredRecords();
   if (!records.length) return;
   const index = Math.floor(Math.random() * records.length);
   state.selectedId = records[index].id;
+  state.isRevealed = false;
   render();
+}
+
+function updateReviewControls(record) {
+  const canReview = Boolean(record);
+  els.reveal.disabled = !canReview;
+  els.keepLearning.disabled = !canReview;
+  els.markMastered.disabled = !canReview;
+  els.shuffle.disabled = filteredRecords().length === 0;
 }
 
 function titleForFilter(filter) {
   return {
-    all: 'All words',
-    new: 'New words',
+    review: 'Check mastery',
     learning: 'Learning',
     mastered: 'Mastered',
-  }[filter] || 'All words';
+    all: 'All words',
+  }[filter] || 'Check mastery';
+}
+
+function summaryText(filtered, learningRecords) {
+  if (state.filter === 'review') {
+    return `${learningRecords.length} word${learningRecords.length === 1 ? '' : 's'} waiting for check`;
+  }
+  return `${filtered.length} word${filtered.length === 1 ? '' : 's'} shown`;
+}
+
+function deckText(record) {
+  if (state.filter === 'review' && !state.isRevealed && record.status !== 'mastered') {
+    return record.word;
+  }
+  return `${record.word} · ${firstLine(record.translation)}`;
 }
 
 function firstLine(value) {
