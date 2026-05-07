@@ -1,10 +1,12 @@
 const API_URL = 'https://script.google.com/macros/s/AKfycbzktCl5zINU3p1DUX4KKaIzgVHkB3YiJ_hwmKZ7hQBgZs69P6csIODeKGLBI-PmGgea/exec';
+const AUTO_REFRESH_INTERVAL_MS = 15000;
 
 const state = {
   records: [],
   query: '',
   filter: 'all',
   selectedId: '',
+  isLoading: false,
 };
 
 const els = {
@@ -40,21 +42,45 @@ els.filters.forEach(button => {
 
 loadRecords();
 
-async function loadRecords() {
+setInterval(() => {
+  if (!document.hidden) {
+    loadRecords({ silent: true });
+  }
+}, AUTO_REFRESH_INTERVAL_MS);
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    loadRecords({ silent: true });
+  }
+});
+
+async function loadRecords(options = {}) {
   if (API_URL.includes('PASTE_YOUR')) {
     els.wordList.innerHTML = '<div class="empty">Paste your Google Apps Script URL into app.js first.</div>';
     els.summary.textContent = 'Waiting for API setup';
     return;
   }
 
-  els.summary.textContent = 'Loading saved words...';
+  if (state.isLoading) {
+    return;
+  }
+
+  state.isLoading = true;
+  if (!options.silent) {
+    els.summary.textContent = 'Loading saved words...';
+  }
+
   try {
     const data = await loadJsonp(API_URL);
     state.records = normalizeRecords(data.records || []);
     render();
   } catch (error) {
-    els.wordList.innerHTML = `<div class="empty">Could not load words. ${escapeHtml(error.message)}</div>`;
-    els.summary.textContent = 'Connection failed';
+    if (!options.silent) {
+      els.wordList.innerHTML = `<div class="empty">Could not load words. ${escapeHtml(error.message)}</div>`;
+      els.summary.textContent = 'Connection failed';
+    }
+  } finally {
+    state.isLoading = false;
   }
 }
 
