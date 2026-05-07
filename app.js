@@ -10,11 +10,13 @@ const state = {
   selectedId: '',
   isLoading: false,
   isRevealed: false,
+  hasLoadedOnce: false,
 };
 
 const els = {
   wordList: document.querySelector('#wordList'),
   appShell: document.querySelector('#appShell'),
+  loadingOverlay: document.querySelector('#loadingOverlay'),
   detailPanel: document.querySelector('#detailPanel'),
   summary: document.querySelector('#summary'),
   totalCount: document.querySelector('#totalCount'),
@@ -63,6 +65,11 @@ els.search.addEventListener('input', event => {
 
 els.refresh.addEventListener('click', () => loadRecords());
 els.reveal.addEventListener('click', async () => {
+  if (state.isRevealed) {
+    moveToNextReviewWord();
+    return;
+  }
+
   const record = state.records.find(item => item.id === state.selectedId);
   if (record && !state.isRevealed && record.status !== 'mastered') {
     await applyRecordAction(record, 'review', 'learning', { keepRevealed: true });
@@ -122,6 +129,7 @@ async function loadRecords(options = {}) {
     }
   } finally {
     state.isLoading = false;
+    finishInitialLoading();
   }
 }
 
@@ -353,6 +361,7 @@ async function postAction(payload) {
 function updateReviewControls(record) {
   const canReview = Boolean(record);
   els.reveal.disabled = !canReview;
+  els.reveal.textContent = state.isRevealed ? 'Next' : 'Reveal';
   els.markMastered.disabled = !canReview;
 }
 
@@ -435,6 +444,25 @@ function dateValue(value) {
 
 function updateSidebarToggleIcon(collapsed) {
   els.sidebarToggleIcon.textContent = collapsed ? '|›' : '‹|';
+}
+
+function moveToNextReviewWord() {
+  const reviewRecords = state.records.filter(record => record.status !== 'mastered');
+  if (!reviewRecords.length) return;
+
+  const currentIndex = reviewRecords.findIndex(record => record.id === state.selectedId);
+  const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % reviewRecords.length : 0;
+  state.selectedId = reviewRecords[nextIndex].id;
+  state.isRevealed = false;
+  render();
+}
+
+function finishInitialLoading() {
+  if (state.hasLoadedOnce) return;
+
+  state.hasLoadedOnce = true;
+  document.body.classList.remove('initial-loading');
+  els.loadingOverlay?.classList.add('hidden');
 }
 
 function firstLine(value) {

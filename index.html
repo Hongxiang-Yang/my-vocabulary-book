@@ -8,7 +8,13 @@
     <link rel="icon" href="./favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="./style.css">
   </head>
-  <body>
+  <body class="initial-loading">
+    <div id="loadingOverlay" class="loading-overlay" aria-live="polite" aria-label="Loading vocabulary">
+      <div class="loading-card">
+        <img src="./favicon.svg" alt="" aria-hidden="true">
+        <strong>Loading</strong>
+      </div>
+    </div>
     <main id="appShell" class="app-shell">
       <aside class="sidebar">
         <div class="brand">

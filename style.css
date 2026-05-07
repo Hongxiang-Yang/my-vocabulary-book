@@ -62,6 +62,48 @@ body {
   transition: background-color var(--motion), color var(--motion);
 }
 
+body.initial-loading {
+  overflow: hidden;
+}
+
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.96);
+  color: #1d1d1f;
+  opacity: 1;
+  transition: opacity 240ms cubic-bezier(0.2, 0, 0.2, 1), visibility 240ms;
+}
+
+.loading-overlay.hidden {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.loading-card {
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+  transform: translateY(-6px);
+}
+
+.loading-card img {
+  width: 58px;
+  height: 58px;
+  border-radius: 14px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.12);
+}
+
+.loading-card strong {
+  font-size: 28px;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
 button,
 input,
 select {
@@ -101,7 +143,14 @@ p {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   min-height: 100vh;
-  transition: grid-template-columns 220ms cubic-bezier(0.2, 0, 0.2, 1);
+  opacity: 1;
+  transition:
+    grid-template-columns 220ms cubic-bezier(0.2, 0, 0.2, 1),
+    opacity 220ms cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+.initial-loading .app-shell {
+  opacity: 0;
 }
 
 .app-shell.sidebar-collapsed {
@@ -167,6 +216,10 @@ p {
   justify-content: center;
 }
 
+.sidebar-collapsed .brand-mark {
+  display: none;
+}
+
 .sidebar-collapsed .brand-copy,
 .sidebar-collapsed .nav-label,
 .sidebar-collapsed .theme-panel label,
@@ -178,10 +231,10 @@ p {
 }
 
 .sidebar-collapsed .sidebar-toggle {
-  position: absolute;
-  top: 74px;
-  left: 27px;
+  width: 46px;
+  height: 46px;
   margin: 0;
+  border-radius: 12px;
 }
 
 h1 {
@@ -418,9 +471,10 @@ input:focus {
 }
 
 .review-meaning.visible {
-  max-height: 260px;
+  max-height: min(46vh, 520px);
   margin-top: 24px;
   opacity: 1;
+  overflow: auto;
   transform: translateY(0);
 }
 
