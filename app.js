@@ -181,7 +181,69 @@ function renderDetail(record) {
       <h4>Review prompt</h4>
       <p class="prompt">Cover the meaning, say the word aloud, then explain it in your own sentence.</p>
     </section>
+
+    <section class="detail-section">
+      <h4>Actions</h4>
+      <div class="detail-actions">
+        <button type="button" data-action="review" data-status="learning">Reviewed</button>
+        <button type="button" data-action="status" data-status="learning">Learning</button>
+        <button type="button" data-action="status" data-status="mastered">Mastered</button>
+        <button class="danger" type="button" data-action="delete">Delete</button>
+      </div>
+    </section>
   `;
+
+  els.detailPanel.querySelectorAll('[data-action]').forEach(button => {
+    button.addEventListener('click', () => handleRecordAction(record, button));
+  });
+}
+
+async function handleRecordAction(record, button) {
+  const action = button.dataset.action;
+  const status = button.dataset.status || record.status || 'learning';
+
+  if (action === 'delete') {
+    const confirmed = window.confirm(`Delete "${record.word}" from your vocabulary book?`);
+    if (!confirmed) return;
+  }
+
+  button.disabled = true;
+  try {
+    await postAction({
+      action,
+      status,
+      word: record.word,
+    });
+
+    if (action === 'delete') {
+      state.records = state.records.filter(item => item.id !== record.id);
+      state.selectedId = '';
+    } else if (action === 'review') {
+      record.status = status;
+      record.reviewCount = Number(record.reviewCount || 0) + 1;
+      record.lastReviewedAt = new Date().toISOString();
+    } else if (action === 'status') {
+      record.status = status;
+    }
+
+    render();
+  } catch (error) {
+    window.alert(`Action failed: ${error.message}`);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function postAction(payload) {
+  await fetch(API_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: {
+      'Content-Type': 'text/plain;charset=utf-8',
+    },
+    body: JSON.stringify(payload),
+  });
+  return { ok: true };
 }
 
 function selectRandomWord() {

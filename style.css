@@ -328,6 +328,30 @@ h4 {
   color: var(--muted);
 }
 
+.detail-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.detail-actions button {
+  height: 36px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+}
+
+.detail-actions button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.detail-actions .danger {
+  background: var(--danger);
+}
+
 .empty,
 .empty-detail {
   padding: 34px;
