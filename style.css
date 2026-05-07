@@ -233,10 +233,11 @@ p {
 }
 
 .sidebar-collapsed .sidebar-toggle {
-  width: 46px;
-  height: 46px;
+  width: 22px;
+  height: 22px;
   margin: 0;
-  border-radius: 12px;
+  border-radius: 7px;
+  font-size: 14px;
 }
 
 h1 {
