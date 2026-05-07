@@ -235,15 +235,17 @@ async function handleRecordAction(record, button) {
 }
 
 async function postAction(payload) {
-  await fetch(API_URL, {
-    method: 'POST',
-    mode: 'no-cors',
-    headers: {
-      'Content-Type': 'text/plain;charset=utf-8',
-    },
-    body: JSON.stringify(payload),
+  const url = new URL(API_URL);
+  Object.entries(payload).forEach(([key, value]) => {
+    url.searchParams.set(key, value || '');
   });
-  return { ok: true };
+
+  const data = await loadJsonp(url.toString());
+  if (!data.ok) {
+    throw new Error(data.error || 'Request failed');
+  }
+
+  return data;
 }
 
 function selectRandomWord() {
