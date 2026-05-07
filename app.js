@@ -1,7 +1,11 @@
 const API_URL = 'https://script.google.com/macros/s/AKfycbzktCl5zINU3p1DUX4KKaIzgVHkB3YiJ_hwmKZ7hQBgZs69P6csIODeKGLBI-PmGgea/exec';
-const AUTO_REFRESH_INTERVAL_MS = 15000;
+const AUTO_REFRESH_INTERVAL_MS = 60000;
 const THEME_KEY = 'hongxiang-vocabulary-theme';
 const SIDEBAR_KEY = 'hongxiang-vocabulary-sidebar-collapsed';
+const RECORDS_CACHE_KEY = 'hongxiang-vocabulary-records-cache';
+const PENDING_ACTIONS_KEY = 'hongxiang-vocabulary-pending-actions';
+const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+const WRITE_FLUSH_DELAY_MS = 650;
 
 const state = {
   records: [],
@@ -12,6 +16,9 @@ const state = {
   isRevealed: false,
   hasLoadedOnce: false,
   reviewSignature: '',
+  pendingActions: readPendingActions(),
+  flushTimer: 0,
+  isFlushing: false,
 };
 
 const els = {
@@ -90,7 +97,9 @@ els.filters.forEach(button => {
   });
 });
 
-loadRecords();
+loadCachedRecords();
+loadRecords({ silent: state.hasLoadedOnce });
+scheduleActionFlush(0);
 
 setInterval(() => {
   if (!document.hidden) {
@@ -123,6 +132,7 @@ async function loadRecords(options = {}) {
   try {
     const data = await loadJsonp(API_URL);
     state.records = normalizeRecords(data.records || []);
+    writeRecordsCache(state.records);
     render();
   } catch (error) {
     if (!options.silent) {
@@ -325,11 +335,9 @@ async function reviewSelected(status) {
 }
 
 async function applyRecordAction(record, action, status, options = {}) {
-  await postAction({
-    action,
-    status,
-    word: record.word,
-  });
+  const previousRecords = state.records.map(item => ({ ...item }));
+  const previousSelectedId = state.selectedId;
+  const now = new Date().toISOString();
 
   if (action === 'delete') {
     state.records = state.records.filter(item => item.id !== record.id);
@@ -337,14 +345,74 @@ async function applyRecordAction(record, action, status, options = {}) {
   } else if (action === 'review') {
     record.status = status;
     record.reviewCount = Number(record.reviewCount || 0) + 1;
-    record.lastReviewedAt = new Date().toISOString();
+    record.lastReviewedAt = now;
   } else if (action === 'status') {
     record.status = status;
   }
 
   state.records.sort(sortRecords);
   state.isRevealed = Boolean(options.keepRevealed);
+  writeRecordsCache(state.records);
   render();
+
+  enqueueAction({
+    action,
+    status,
+    word: record.word,
+  }, () => {
+    state.records = previousRecords;
+    state.selectedId = previousSelectedId;
+    writeRecordsCache(state.records);
+    render();
+  });
+}
+
+function enqueueAction(payload, rollback) {
+  state.pendingActions.push({
+    ...payload,
+    queuedAt: Date.now(),
+  });
+  writePendingActions();
+  scheduleActionFlush();
+  flushActions().catch(error => {
+    rollback?.();
+    window.alert(`Action failed: ${error.message}`);
+  });
+}
+
+function scheduleActionFlush(delay = WRITE_FLUSH_DELAY_MS) {
+  window.clearTimeout(state.flushTimer);
+  state.flushTimer = window.setTimeout(() => {
+    flushActions().catch(error => {
+      console.warn('Vocabulary sync failed', error);
+    });
+  }, delay);
+}
+
+async function flushActions() {
+  if (state.isFlushing || !state.pendingActions.length) {
+    return;
+  }
+
+  state.isFlushing = true;
+  const actions = state.pendingActions.slice(0, 12);
+
+  try {
+    await postAction({
+      action: actions.length === 1 ? actions[0].action : 'batch',
+      status: actions[0]?.status || '',
+      word: actions[0]?.word || '',
+      items: actions.length === 1 ? '' : JSON.stringify(actions),
+    });
+    state.pendingActions.splice(0, actions.length);
+    writePendingActions();
+  } finally {
+    state.isFlushing = false;
+  }
+
+  if (state.pendingActions.length) {
+    scheduleActionFlush(0);
+  }
 }
 
 async function postAction(payload) {
@@ -359,6 +427,55 @@ async function postAction(payload) {
   }
 
   return data;
+}
+
+function loadCachedRecords() {
+  const cached = readRecordsCache();
+  if (!cached.length) return;
+
+  state.records = cached;
+  render();
+  finishInitialLoading();
+}
+
+function readRecordsCache() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(RECORDS_CACHE_KEY) || 'null');
+    if (!cached || Date.now() - Number(cached.savedAt || 0) > CACHE_MAX_AGE_MS) {
+      return [];
+    }
+    return normalizeRecords(cached.records || []);
+  } catch (error) {
+    return [];
+  }
+}
+
+function writeRecordsCache(records) {
+  try {
+    localStorage.setItem(RECORDS_CACHE_KEY, JSON.stringify({
+      savedAt: Date.now(),
+      records,
+    }));
+  } catch (error) {
+    localStorage.removeItem(RECORDS_CACHE_KEY);
+  }
+}
+
+function readPendingActions() {
+  try {
+    const actions = JSON.parse(localStorage.getItem(PENDING_ACTIONS_KEY) || '[]');
+    return Array.isArray(actions) ? actions : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function writePendingActions() {
+  try {
+    localStorage.setItem(PENDING_ACTIONS_KEY, JSON.stringify(state.pendingActions));
+  } catch (error) {
+    localStorage.removeItem(PENDING_ACTIONS_KEY);
+  }
 }
 
 function updateReviewControls(record) {
