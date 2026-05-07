@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Vocabulary Book</title>
+    <link rel="stylesheet" href="./style.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">V</div>
+          <div>
+            <h1>Vocabulary</h1>
+            <p>Saved from Easydict</p>
+          </div>
+        </div>
+
+        <nav class="filters" aria-label="Vocabulary filters">
+          <button class="filter active" type="button" data-filter="all">All words</button>
+          <button class="filter" type="button" data-filter="new">New</button>
+          <button class="filter" type="button" data-filter="learning">Learning</button>
+          <button class="filter" type="button" data-filter="mastered">Mastered</button>
+        </nav>
+
+        <section class="sidebar-panel">
+          <div class="metric">
+            <span>Total</span>
+            <strong id="totalCount">0</strong>
+          </div>
+          <div class="metric">
+            <span>Need review</span>
+            <strong id="newCount">0</strong>
+          </div>
+          <div class="metric">
+            <span>Reviewed</span>
+            <strong id="reviewedCount">0</strong>
+          </div>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <header class="toolbar">
+          <div>
+            <p class="eyebrow">Personal word bank</p>
+            <h2 id="pageTitle">All words</h2>
+          </div>
+          <div class="toolbar-actions">
+            <input id="search" type="search" placeholder="Search word, meaning, or service">
+            <button id="refresh" class="icon-button" type="button" aria-label="Refresh">Refresh</button>
+          </div>
+        </header>
+
+        <section class="review-strip" aria-label="Review prompt">
+          <div>
+            <span id="summary">Loading saved words...</span>
+            <strong id="todayWord">Ready when you are.</strong>
+          </div>
+          <button id="shuffle" type="button">Pick one</button>
+        </section>
+
+        <section class="content-grid">
+          <div id="wordList" class="word-list" aria-live="polite"></div>
+          <aside id="detailPanel" class="detail-panel">
+            <div class="empty-detail">
+              <span>Choose a word</span>
+              <p>Its meaning, source, and review notes will appear here.</p>
+            </div>
+          </aside>
+        </section>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
