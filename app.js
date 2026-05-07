@@ -11,6 +11,7 @@ const state = {
   isLoading: false,
   isRevealed: false,
   hasLoadedOnce: false,
+  reviewSignature: '',
 };
 
 const els = {
@@ -28,6 +29,7 @@ const els = {
   markMastered: document.querySelector('#markMastered'),
   todayWord: document.querySelector('#todayWord'),
   reviewMeaning: document.querySelector('#reviewMeaning'),
+  reviewDeck: document.querySelector('#reviewDeck'),
   pageTitle: document.querySelector('#pageTitle'),
   themeSelect: document.querySelector('#themeSelect'),
   sidebarToggle: document.querySelector('#sidebarToggle'),
@@ -192,6 +194,7 @@ function render() {
   els.todayWord.textContent = selected ? deckText(selected) : 'No learning words yet.';
   els.reviewMeaning.textContent = selected ? reviewMeaningText(selected) : '';
   els.reviewMeaning.classList.toggle('visible', Boolean(selected && state.filter === 'review' && state.isRevealed));
+  animateReviewChange(selected);
 
   renderList(filtered);
   renderDetail(selected);
@@ -444,6 +447,20 @@ function dateValue(value) {
 
 function updateSidebarToggleIcon(collapsed) {
   els.sidebarToggleIcon.textContent = collapsed ? '|›' : '‹|';
+}
+
+function animateReviewChange(record) {
+  const signature = `${state.filter}:${record?.id || ''}:${state.isRevealed}`;
+  if (!state.hasLoadedOnce || signature === state.reviewSignature) {
+    state.reviewSignature = signature;
+    return;
+  }
+
+  state.reviewSignature = signature;
+  els.reviewDeck.classList.remove('is-changing');
+  window.requestAnimationFrame(() => {
+    els.reviewDeck.classList.add('is-changing');
+  });
 }
 
 function moveToNextReviewWord() {
