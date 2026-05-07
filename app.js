@@ -1,6 +1,7 @@
 const API_URL = 'https://script.google.com/macros/s/AKfycbzktCl5zINU3p1DUX4KKaIzgVHkB3YiJ_hwmKZ7hQBgZs69P6csIODeKGLBI-PmGgea/exec';
 const AUTO_REFRESH_INTERVAL_MS = 15000;
 const THEME_KEY = 'hongxiang-vocabulary-theme';
+const SIDEBAR_KEY = 'hongxiang-vocabulary-sidebar-collapsed';
 
 const state = {
   records: [],
@@ -13,6 +14,7 @@ const state = {
 
 const els = {
   wordList: document.querySelector('#wordList'),
+  appShell: document.querySelector('#appShell'),
   detailPanel: document.querySelector('#detailPanel'),
   summary: document.querySelector('#summary'),
   totalCount: document.querySelector('#totalCount'),
@@ -27,6 +29,7 @@ const els = {
   todayWord: document.querySelector('#todayWord'),
   pageTitle: document.querySelector('#pageTitle'),
   themeSelect: document.querySelector('#themeSelect'),
+  sidebarToggle: document.querySelector('#sidebarToggle'),
   filters: [...document.querySelectorAll('.filter')],
 };
 
@@ -34,10 +37,21 @@ const savedTheme = localStorage.getItem(THEME_KEY) || 'mist';
 document.documentElement.dataset.theme = savedTheme;
 els.themeSelect.value = savedTheme;
 
+const savedSidebarCollapsed = localStorage.getItem(SIDEBAR_KEY) === 'true';
+els.appShell.classList.toggle('sidebar-collapsed', savedSidebarCollapsed);
+els.sidebarToggle.setAttribute('aria-expanded', String(!savedSidebarCollapsed));
+
 els.themeSelect.addEventListener('change', event => {
   const theme = event.target.value;
   document.documentElement.dataset.theme = theme;
   localStorage.setItem(THEME_KEY, theme);
+});
+
+els.sidebarToggle.addEventListener('click', () => {
+  const collapsed = !els.appShell.classList.contains('sidebar-collapsed');
+  els.appShell.classList.toggle('sidebar-collapsed', collapsed);
+  els.sidebarToggle.setAttribute('aria-expanded', String(!collapsed));
+  localStorage.setItem(SIDEBAR_KEY, String(collapsed));
 });
 
 els.search.addEventListener('input', event => {
@@ -201,7 +215,7 @@ function renderList(records) {
     <button class="word-row ${record.id === state.selectedId ? 'selected' : ''}" type="button" data-id="${escapeAttr(record.id)}">
       <span class="word-row-main">
         <strong>${escapeHtml(record.word)}</strong>
-        <small>${escapeHtml(firstLine(record.translation) || 'No translation saved')}</small>
+        <small>${escapeHtml(listSubtitle(record))}</small>
       </span>
       <span class="status ${escapeAttr(record.status)}">${escapeHtml(record.status)}</span>
     </button>
@@ -357,6 +371,14 @@ function titleForFilter(filter) {
     mastered: 'Mastered',
     all: 'All words',
   }[filter] || 'Check mastery';
+}
+
+function listSubtitle(record) {
+  if (state.filter === 'review') {
+    return record.id === state.selectedId ? 'Selected for mastery check' : 'Meaning hidden for check';
+  }
+
+  return firstLine(record.translation) || 'No translation saved';
 }
 
 function summaryText(filtered, learningRecords) {
