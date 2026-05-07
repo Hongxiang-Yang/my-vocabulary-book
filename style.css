@@ -223,6 +223,7 @@ p {
 }
 
 .sidebar-collapsed .brand {
+  width: 100%;
   justify-content: center;
   gap: 0;
 }
@@ -239,10 +240,12 @@ p {
 
 .sidebar-collapsed .sidebar-toggle {
   width: 100%;
+  min-width: 0;
   height: 40px;
   margin: 0;
   border-radius: 8px;
   font-size: 17px;
+  flex: 0 0 auto;
 }
 
 h1 {
