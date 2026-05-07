@@ -22,14 +22,14 @@ const els = {
   masteredCount: document.querySelector('#masteredCount'),
   search: document.querySelector('#search'),
   refresh: document.querySelector('#refresh'),
-  shuffle: document.querySelector('#shuffle'),
   reveal: document.querySelector('#reveal'),
-  keepLearning: document.querySelector('#keepLearning'),
   markMastered: document.querySelector('#markMastered'),
   todayWord: document.querySelector('#todayWord'),
+  reviewMeaning: document.querySelector('#reviewMeaning'),
   pageTitle: document.querySelector('#pageTitle'),
   themeSelect: document.querySelector('#themeSelect'),
   sidebarToggle: document.querySelector('#sidebarToggle'),
+  sidebarToggleIcon: document.querySelector('#sidebarToggleIcon'),
   filters: [...document.querySelectorAll('.filter')],
 };
 
@@ -40,6 +40,7 @@ els.themeSelect.value = savedTheme;
 const savedSidebarCollapsed = localStorage.getItem(SIDEBAR_KEY) === 'true';
 els.appShell.classList.toggle('sidebar-collapsed', savedSidebarCollapsed);
 els.sidebarToggle.setAttribute('aria-expanded', String(!savedSidebarCollapsed));
+updateSidebarToggleIcon(savedSidebarCollapsed);
 
 els.themeSelect.addEventListener('change', event => {
   const theme = event.target.value;
@@ -51,6 +52,7 @@ els.sidebarToggle.addEventListener('click', () => {
   const collapsed = !els.appShell.classList.contains('sidebar-collapsed');
   els.appShell.classList.toggle('sidebar-collapsed', collapsed);
   els.sidebarToggle.setAttribute('aria-expanded', String(!collapsed));
+  updateSidebarToggleIcon(collapsed);
   localStorage.setItem(SIDEBAR_KEY, String(collapsed));
 });
 
@@ -60,12 +62,14 @@ els.search.addEventListener('input', event => {
 });
 
 els.refresh.addEventListener('click', () => loadRecords());
-els.shuffle.addEventListener('click', selectRandomLearningWord);
-els.reveal.addEventListener('click', () => {
+els.reveal.addEventListener('click', async () => {
+  const record = state.records.find(item => item.id === state.selectedId);
+  if (record && !state.isRevealed && record.status !== 'mastered') {
+    await applyRecordAction(record, 'review', 'learning', { keepRevealed: true });
+  }
   state.isRevealed = true;
   render();
 });
-els.keepLearning.addEventListener('click', () => reviewSelected('learning'));
 els.markMastered.addEventListener('click', () => reviewSelected('mastered'));
 
 els.filters.forEach(button => {
@@ -156,13 +160,14 @@ function normalizeRecords(records) {
         reviewCount: Number(record.reviewCount || 0),
       };
     })
-    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    .sort(sortRecords);
 }
 
 function render() {
   const filtered = filteredRecords();
   const selected = selectedRecord(filtered);
   state.selectedId = selected?.id || '';
+  els.appShell.classList.toggle('review-mode', state.filter === 'review');
 
   els.filters.forEach(button => {
     button.classList.toggle('active', button.dataset.filter === state.filter);
@@ -177,6 +182,8 @@ function render() {
   els.masteredCount.textContent = masteredRecords.length;
   els.summary.textContent = summaryText(filtered, learningRecords);
   els.todayWord.textContent = selected ? deckText(selected) : 'No learning words yet.';
+  els.reviewMeaning.textContent = selected ? reviewMeaningText(selected) : '';
+  els.reviewMeaning.classList.toggle('visible', Boolean(selected && state.filter === 'review' && state.isRevealed));
 
   renderList(filtered);
   renderDetail(selected);
@@ -197,7 +204,6 @@ function filteredRecords() {
     const matchesFilter = (
       state.filter === 'all' ||
       (state.filter === 'review' && record.status !== 'mastered') ||
-      (state.filter === 'learning' && record.status !== 'mastered') ||
       (state.filter === 'mastered' && record.status === 'mastered')
     );
     const searchable = `${record.word} ${record.translation} ${record.service}`.toLowerCase();
@@ -272,12 +278,7 @@ function renderDetail(record) {
 
     <section class="detail-section">
       <h4>Actions</h4>
-      <div class="detail-actions">
-        <button type="button" data-action="review" data-status="learning">Keep learning</button>
-        <button type="button" data-action="review" data-status="mastered">Mark mastered</button>
-        <button type="button" data-action="status" data-status="learning">Move to Learning</button>
-        <button class="danger" type="button" data-action="delete">Delete</button>
-      </div>
+      ${actionsMarkup(record)}
     </section>
   `;
 
@@ -308,10 +309,11 @@ async function handleRecordAction(record, button) {
 async function reviewSelected(status) {
   const record = state.records.find(item => item.id === state.selectedId);
   if (!record) return;
-  await applyRecordAction(record, 'review', status);
+  const action = status === 'mastered' && state.isRevealed ? 'status' : 'review';
+  await applyRecordAction(record, action, status);
 }
 
-async function applyRecordAction(record, action, status) {
+async function applyRecordAction(record, action, status, options = {}) {
   await postAction({
     action,
     status,
@@ -329,7 +331,8 @@ async function applyRecordAction(record, action, status) {
     record.status = status;
   }
 
-  state.isRevealed = false;
+  state.records.sort(sortRecords);
+  state.isRevealed = Boolean(options.keepRevealed);
   render();
 }
 
@@ -347,27 +350,15 @@ async function postAction(payload) {
   return data;
 }
 
-function selectRandomLearningWord() {
-  const records = filteredRecords();
-  if (!records.length) return;
-  const index = Math.floor(Math.random() * records.length);
-  state.selectedId = records[index].id;
-  state.isRevealed = false;
-  render();
-}
-
 function updateReviewControls(record) {
   const canReview = Boolean(record);
   els.reveal.disabled = !canReview;
-  els.keepLearning.disabled = !canReview;
   els.markMastered.disabled = !canReview;
-  els.shuffle.disabled = filteredRecords().length === 0;
 }
 
 function titleForFilter(filter) {
   return {
     review: 'Check mastery',
-    learning: 'Learning',
     mastered: 'Mastered',
     all: 'All words',
   }[filter] || 'Check mastery';
@@ -389,10 +380,61 @@ function summaryText(filtered, learningRecords) {
 }
 
 function deckText(record) {
-  if (state.filter === 'review' && !state.isRevealed && record.status !== 'mastered') {
+  if (state.filter === 'review') {
     return record.word;
   }
   return `${record.word} · ${firstLine(record.translation)}`;
+}
+
+function reviewMeaningText(record) {
+  if (state.filter !== 'review' || !state.isRevealed) {
+    return '';
+  }
+
+  return record.translation || 'No translation saved yet.';
+}
+
+function actionsMarkup(record) {
+  if (record.status === 'mastered') {
+    return `
+      <div class="detail-actions two-actions">
+        <button type="button" data-action="status" data-status="learning">Keep learning</button>
+        <button class="danger" type="button" data-action="delete">Delete</button>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="detail-actions">
+      <button type="button" data-action="review" data-status="mastered">Mark mastered</button>
+      <button class="danger" type="button" data-action="delete">Delete</button>
+    </div>
+  `;
+}
+
+function sortRecords(a, b) {
+  const statusA = a.status === 'mastered' ? 1 : 0;
+  const statusB = b.status === 'mastered' ? 1 : 0;
+  if (statusA !== statusB) {
+    return statusA - statusB;
+  }
+
+  if (statusA === 0) {
+    return dateValue(a.lastReviewedAt) - dateValue(b.lastReviewedAt)
+      || dateValue(b.createdAt) - dateValue(a.createdAt);
+  }
+
+  return dateValue(b.lastReviewedAt || b.createdAt) - dateValue(a.lastReviewedAt || a.createdAt);
+}
+
+function dateValue(value) {
+  if (!value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function updateSidebarToggleIcon(collapsed) {
+  els.sidebarToggleIcon.textContent = collapsed ? '|›' : '‹|';
 }
 
 function firstLine(value) {

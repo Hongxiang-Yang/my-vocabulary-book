@@ -15,10 +15,9 @@
           <img class="brand-mark" src="./favicon.svg" alt="" aria-hidden="true">
           <div class="brand-copy">
             <h1>Hongxiang Vocabulary</h1>
-            <p>Saved from Hongxiang dict</p>
           </div>
           <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="Toggle sidebar" aria-expanded="true">
-            <span aria-hidden="true">≡</span>
+            <span id="sidebarToggleIcon" aria-hidden="true">‹|</span>
           </button>
         </div>
 
@@ -26,10 +25,6 @@
           <button class="filter active" type="button" data-filter="review">
             <span class="nav-icon" aria-hidden="true">✓</span>
             <span class="nav-label">Check mastery</span>
-          </button>
-          <button class="filter" type="button" data-filter="learning">
-            <span class="nav-icon" aria-hidden="true">L</span>
-            <span class="nav-label">Learning</span>
           </button>
           <button class="filter" type="button" data-filter="mastered">
             <span class="nav-icon" aria-hidden="true">M</span>
@@ -82,12 +77,11 @@
           <div class="review-copy">
             <span id="summary">Loading saved words...</span>
             <strong id="todayWord">Ready when you are.</strong>
+            <p id="reviewMeaning" class="review-meaning"></p>
           </div>
           <div class="review-actions">
             <button id="reveal" type="button">Reveal</button>
-            <button id="keepLearning" type="button">Keep learning</button>
             <button id="markMastered" type="button">Mastered</button>
-            <button id="shuffle" type="button">Next</button>
           </div>
         </section>
 
