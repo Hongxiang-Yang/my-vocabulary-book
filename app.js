@@ -1,4 +1,4 @@
-const API_URL = 'https://script.google.com/macros/s/AKfycbzktCl5zINU3p1DUX4KKaIzgVHkB3YiJ_hwmKZ7hQBgZs69P6csIODeKGLBI-PmGgea/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbwxWjvL0dOFZKD3q0i0e2rrKqNZTo90HSa3szxh9Y68OMMTDiTYrN_R6RKdgyUouEha/exec';
 const AUTO_REFRESH_INTERVAL_MS = 60000;
 const THEME_KEY = 'hongxiang-vocabulary-theme';
 const SIDEBAR_KEY = 'hongxiang-vocabulary-sidebar-collapsed';
