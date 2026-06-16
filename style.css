@@ -194,6 +194,8 @@ p {
 .nav-label,
 .theme-panel label,
 .theme-panel select,
+.sound-copy,
+.sound-toggle,
 .metric span {
   opacity: 1;
   transition: opacity var(--motion), width var(--motion);
@@ -232,6 +234,7 @@ p {
 .sidebar-collapsed .nav-label,
 .sidebar-collapsed .theme-panel label,
 .sidebar-collapsed .theme-panel select,
+.sidebar-collapsed .sound-copy,
 .sidebar-collapsed .metric span {
   width: 0;
   opacity: 0;
@@ -254,7 +257,8 @@ h1 {
 }
 
 .metric span,
-.theme-panel label {
+.theme-panel label,
+.sound-copy span {
   color: var(--muted);
   font-size: 13px;
 }
@@ -331,6 +335,7 @@ h1 {
 }
 
 .theme-panel,
+.sound-panel,
 .sidebar-panel {
   display: grid;
   gap: 10px;
@@ -338,6 +343,89 @@ h1 {
 
 .theme-panel {
   padding-top: 4px;
+}
+
+.sound-panel {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.sound-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.sound-copy span {
+  font-weight: 650;
+}
+
+.sound-copy small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sound-toggle {
+  position: relative;
+  display: inline-flex;
+  width: 48px;
+  height: 28px;
+  align-items: center;
+  cursor: pointer;
+}
+
+.sound-checkbox {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sound-track {
+  position: relative;
+  display: block;
+  width: 48px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--surface-strong);
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: background-color var(--motion), box-shadow var(--motion);
+}
+
+.sound-thumb {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--muted);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.16);
+  transition: background-color var(--motion), transform var(--motion);
+}
+
+.sound-checkbox:checked + .sound-track {
+  background: var(--accent);
+  box-shadow: inset 0 0 0 1px transparent;
+}
+
+.sound-checkbox:checked + .sound-track .sound-thumb {
+  background: white;
+  transform: translateX(20px);
+}
+
+.sound-checkbox:focus-visible + .sound-track {
+  box-shadow: 0 0 0 3px var(--accent-soft), inset 0 0 0 1px var(--accent);
+}
+
+.sidebar-collapsed .sound-panel {
+  grid-template-columns: 1fr;
+  justify-items: center;
 }
 
 select {
@@ -462,9 +550,19 @@ input:focus {
   font-size: 14px;
 }
 
+.review-word-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-start;
+  margin-top: 8px;
+}
+
 .review-copy strong {
   display: block;
-  margin-top: 8px;
+  min-width: 0;
+  margin-top: 0;
   font-size: 32px;
   line-height: 1.15;
   transition: opacity var(--motion), transform var(--motion);
@@ -476,9 +574,49 @@ input:focus {
 }
 
 .review-mode .review-copy strong {
-  margin-top: 22px;
   font-size: clamp(56px, 9vw, 112px);
   letter-spacing: 0;
+}
+
+.review-mode .review-word-row {
+  justify-content: center;
+  margin-top: 22px;
+}
+
+.speaker-button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--surface-strong);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.speaker-button:hover {
+  transform: translateY(-1px);
+}
+
+.speaker-button:disabled {
+  opacity: 0.38;
+}
+
+.speaker-icon {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.review-mode .speaker-button {
+  width: 44px;
+  height: 44px;
+  font-size: 18px;
 }
 
 .review-meaning {
@@ -851,6 +989,7 @@ h4 {
   .sidebar-collapsed .nav-label,
   .sidebar-collapsed .theme-panel label,
   .sidebar-collapsed .theme-panel select,
+  .sidebar-collapsed .sound-copy,
   .sidebar-collapsed .metric span {
     width: auto;
     opacity: 1;
@@ -904,15 +1043,26 @@ h4 {
   }
 
   .workspace {
-    order: 4;
+    order: 5;
     padding: 24px 18px;
   }
 
   .sidebar-panel {
-    order: 5;
+    order: 6;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     margin: 0;
     padding: 0 18px 22px;
+  }
+
+  .sound-panel {
+    order: 4;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 8px 18px 0;
+  }
+
+  .sidebar-collapsed .sound-panel {
+    grid-template-columns: minmax(0, 1fr) auto;
+    justify-items: stretch;
   }
 
   .sidebar-toggle {

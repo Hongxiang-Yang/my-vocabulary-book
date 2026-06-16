@@ -55,6 +55,19 @@
           </select>
         </section>
 
+        <section class="sound-panel" aria-label="Sound">
+          <div class="sound-copy">
+            <span>Sound</span>
+            <small>Effects + pronunciation</small>
+          </div>
+          <label class="sound-toggle" for="soundToggle">
+            <input id="soundToggle" class="sound-checkbox" type="checkbox">
+            <span class="sound-track" aria-hidden="true">
+              <span class="sound-thumb"></span>
+            </span>
+          </label>
+        </section>
+
         <section class="sidebar-panel">
           <div class="metric">
             <span>Total</span>
@@ -86,7 +99,16 @@
         <section id="reviewDeck" class="review-deck" aria-label="Mastery check">
           <div class="review-copy">
             <span id="summary">Loading saved words...</span>
-            <strong id="todayWord">Ready when you are.</strong>
+            <div class="review-word-row">
+              <strong id="todayWord">Ready when you are.</strong>
+              <button id="playPronunciation" class="speaker-button" type="button" aria-label="Play pronunciation">
+                <svg class="speaker-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M11 5 6 9H2v6h4l5 4V5Z"></path>
+                  <path d="M15.5 8.5a5 5 0 0 1 0 7"></path>
+                  <path d="M19 5a10 10 0 0 1 0 14"></path>
+                </svg>
+              </button>
+            </div>
             <p id="reviewMeaning" class="review-meaning"></p>
           </div>
           <div class="review-actions">

@@ -2,11 +2,13 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbwxWjvL0dOFZKD3q0i0e2rr
 const AUTO_REFRESH_INTERVAL_MS = 60000;
 const THEME_KEY = 'hongxiang-vocabulary-theme';
 const SIDEBAR_KEY = 'hongxiang-vocabulary-sidebar-collapsed';
+const SOUND_KEY = 'hongxiang-vocabulary-sound-enabled';
 const RECORDS_CACHE_KEY = 'hongxiang-vocabulary-records-cache';
 const PENDING_ACTIONS_KEY = 'hongxiang-vocabulary-pending-actions';
 const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const WRITE_FLUSH_DELAY_MS = 650;
 const LOOKUP_DEBOUNCE_MS = 520;
+const PRONUNCIATION_DELAY_MS = 180;
 const DICTIONARY_API_BASE = 'https://api.dictionaryapi.dev/api/v2/entries/en/';
 const TRANSLATION_API_URL = 'https://api.mymemory.translated.net/get';
 
@@ -17,10 +19,16 @@ const state = {
   selectedId: '',
   isLoading: false,
   isRevealed: false,
+  isSoundEnabled: readSoundPreference(),
   hasLoadedOnce: false,
   reviewSignature: '',
+  spokenWordSignature: '',
   pendingActions: readPendingActions(),
   flushTimer: 0,
+  pronunciationTimer: 0,
+  pronunciationAudio: null,
+  pronunciationAudioCache: new Map(),
+  audioContext: null,
   isFlushing: false,
   manualLookupTimer: 0,
   lookupAbortController: null,
@@ -39,11 +47,13 @@ const els = {
   refresh: document.querySelector('#refresh'),
   reveal: document.querySelector('#reveal'),
   markMastered: document.querySelector('#markMastered'),
+  playPronunciation: document.querySelector('#playPronunciation'),
   todayWord: document.querySelector('#todayWord'),
   reviewMeaning: document.querySelector('#reviewMeaning'),
   reviewDeck: document.querySelector('#reviewDeck'),
   pageTitle: document.querySelector('#pageTitle'),
   themeSelect: document.querySelector('#themeSelect'),
+  soundToggle: document.querySelector('#soundToggle'),
   sidebarToggle: document.querySelector('#sidebarToggle'),
   sidebarToggleIcon: document.querySelector('#sidebarToggleIcon'),
   addWordForm: document.querySelector('#addWordForm'),
@@ -59,6 +69,7 @@ const els = {
 const savedTheme = localStorage.getItem(THEME_KEY) || 'mist';
 document.documentElement.dataset.theme = savedTheme;
 els.themeSelect.value = savedTheme;
+updateSoundToggle();
 
 const savedSidebarCollapsed = localStorage.getItem(SIDEBAR_KEY) === 'true';
 els.appShell.classList.toggle('sidebar-collapsed', savedSidebarCollapsed);
@@ -69,6 +80,20 @@ els.themeSelect.addEventListener('change', event => {
   const theme = event.target.value;
   document.documentElement.dataset.theme = theme;
   localStorage.setItem(THEME_KEY, theme);
+});
+
+els.soundToggle.addEventListener('change', () => {
+  state.isSoundEnabled = els.soundToggle.checked;
+  writeSoundPreference(state.isSoundEnabled);
+  updateSoundToggle();
+  updateReviewControls(state.records.find(record => record.id === state.selectedId));
+
+  if (state.isSoundEnabled) {
+    state.spokenWordSignature = '';
+    queueAutoPronunciation(state.records.find(record => record.id === state.selectedId));
+  } else {
+    stopPronunciation();
+  }
 });
 
 els.sidebarToggle.addEventListener('click', () => {
@@ -96,12 +121,20 @@ els.addWordForm.addEventListener('submit', event => {
   saveManualWord();
 });
 els.clearManualWord.addEventListener('click', resetManualForm);
+els.playPronunciation.addEventListener('click', () => {
+  const record = state.records.find(item => item.id === state.selectedId);
+  if (!record) return;
+  state.spokenWordSignature = '';
+  playPronunciation(record.word);
+});
 els.reveal.addEventListener('click', async () => {
   if (state.isRevealed) {
+    playButtonSound('next');
     moveToNextReviewWord();
     return;
   }
 
+  playButtonSound('reveal');
   const record = state.records.find(item => item.id === state.selectedId);
   if (record && !state.isRevealed && record.status !== 'mastered') {
     await applyRecordAction(record, 'review', 'learning', { keepRevealed: true });
@@ -109,7 +142,10 @@ els.reveal.addEventListener('click', async () => {
   state.isRevealed = true;
   render();
 });
-els.markMastered.addEventListener('click', () => reviewSelected('mastered'));
+els.markMastered.addEventListener('click', () => {
+  playButtonSound('master');
+  reviewSelected('mastered');
+});
 
 els.filters.forEach(button => {
   button.addEventListener('click', () => {
@@ -236,6 +272,7 @@ function render() {
   renderList(filtered);
   renderDetail(selected);
   updateReviewControls(selected);
+  queueAutoPronunciation(selected);
 }
 
 function selectedRecord(filtered) {
@@ -509,6 +546,271 @@ function writePendingActions() {
   } catch (error) {
     localStorage.removeItem(PENDING_ACTIONS_KEY);
   }
+}
+
+function readSoundPreference() {
+  try {
+    return localStorage.getItem(SOUND_KEY) !== 'false';
+  } catch (error) {
+    return true;
+  }
+}
+
+function writeSoundPreference(isEnabled) {
+  try {
+    localStorage.setItem(SOUND_KEY, String(isEnabled));
+  } catch (error) {
+    localStorage.removeItem(SOUND_KEY);
+  }
+}
+
+function updateSoundToggle() {
+  els.soundToggle.checked = state.isSoundEnabled;
+  els.soundToggle.setAttribute(
+    'aria-label',
+    state.isSoundEnabled ? 'Turn sound off' : 'Turn sound on',
+  );
+}
+
+function queueAutoPronunciation(record) {
+  if (!state.isSoundEnabled || !record || state.filter === 'add') {
+    window.clearTimeout(state.pronunciationTimer);
+    return;
+  }
+
+  const signature = `${state.filter}:${record.id}:${record.word}`;
+  if (signature === state.spokenWordSignature) {
+    return;
+  }
+
+  state.spokenWordSignature = signature;
+  window.clearTimeout(state.pronunciationTimer);
+  state.pronunciationTimer = window.setTimeout(() => {
+    playPronunciation(record.word);
+  }, PRONUNCIATION_DELAY_MS);
+}
+
+async function playPronunciation(word) {
+  if (!state.isSoundEnabled || !word) {
+    return;
+  }
+
+  stopPronunciationPlayback();
+
+  const audioUrl = await pronunciationAudioUrl(word);
+  if (!state.isSoundEnabled) {
+    return;
+  }
+
+  if (audioUrl) {
+    try {
+      await playPronunciationAudio(audioUrl);
+      return;
+    } catch (error) {
+      if (error?.name === 'NotAllowedError') {
+        return;
+      }
+      console.warn('Dictionary pronunciation failed, falling back to speech synthesis', error);
+    }
+  }
+
+  speakWord(word);
+}
+
+async function pronunciationAudioUrl(word) {
+  if (!isSingleEnglishWord(word)) {
+    return '';
+  }
+
+  const key = word.toLowerCase();
+  if (state.pronunciationAudioCache.has(key)) {
+    return state.pronunciationAudioCache.get(key);
+  }
+
+  try {
+    const response = await fetch(`${DICTIONARY_API_BASE}${encodeURIComponent(key)}`);
+    if (!response.ok) {
+      throw new Error('Pronunciation lookup failed');
+    }
+
+    const data = await response.json();
+    const entries = Array.isArray(data) ? data : [];
+    const audioUrl = entries
+      .flatMap(entry => entry.phonetics || [])
+      .map(phonetic => String(phonetic.audio || '').trim())
+      .find(url => url);
+    const normalizedUrl = normalizeAudioUrl(audioUrl || '');
+    state.pronunciationAudioCache.set(key, normalizedUrl);
+    return normalizedUrl;
+  } catch (error) {
+    state.pronunciationAudioCache.set(key, '');
+    return '';
+  }
+}
+
+function normalizeAudioUrl(url) {
+  if (!url) return '';
+  if (url.startsWith('//')) return `https:${url}`;
+  return /^https?:\/\//i.test(url) ? url : '';
+}
+
+async function playPronunciationAudio(url) {
+  const audio = document.createElement('audio');
+  audio.src = url;
+  audio.preload = 'auto';
+  audio.volume = 0.86;
+  state.pronunciationAudio = audio;
+  await audio.play();
+}
+
+function speakWord(word) {
+  if (!state.isSoundEnabled || !word || !('speechSynthesis' in window)) {
+    return;
+  }
+
+  const voice = preferredSpeechVoice(word);
+  if (!voice && looksLikeEnglishText(word)) {
+    return;
+  }
+
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(word);
+  utterance.lang = voice?.lang || (looksLikeEnglishText(word) ? 'en-US' : 'zh-CN');
+  if (voice) {
+    utterance.voice = voice;
+  }
+  utterance.rate = 0.96;
+  utterance.pitch = 1;
+  utterance.volume = 0.88;
+  window.speechSynthesis.speak(utterance);
+}
+
+function stopPronunciation() {
+  window.clearTimeout(state.pronunciationTimer);
+  stopPronunciationPlayback();
+}
+
+function stopPronunciationPlayback() {
+  if (state.pronunciationAudio) {
+    state.pronunciationAudio.pause();
+    state.pronunciationAudio.currentTime = 0;
+    state.pronunciationAudio = null;
+  }
+
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+}
+
+function preferredSpeechVoice(word) {
+  if (!('speechSynthesis' in window)) {
+    return null;
+  }
+
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices.length) {
+    return null;
+  }
+
+  const isEnglish = looksLikeEnglishText(word);
+  const candidates = voices.filter(voice => (
+    isEnglish ? /^en[-_]/i.test(voice.lang) : /^zh[-_]/i.test(voice.lang)
+  ));
+  const naturalCandidates = candidates.filter(voice => !isNoveltyVoice(voice));
+
+  return naturalCandidates.find(voice => (
+    /^(Samantha|Alex|Daniel|Karen|Moira|Tessa|Serena)$/i.test(voice.name)
+    || /Microsoft (Jenny|Aria|Guy|Libby|Ryan|Sonia)/i.test(voice.name)
+    || /Google (US|UK|Australian) English/i.test(voice.name)
+    || /Natural|Premium|Enhanced/i.test(voice.name)
+  ))
+    || naturalCandidates.find(voice => /en[-_]US/i.test(voice.lang))
+    || naturalCandidates.find(voice => /en[-_]GB/i.test(voice.lang))
+    || naturalCandidates[0]
+    || null;
+}
+
+function isNoveltyVoice(voice) {
+  return /Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Deranged|Fred|Good News|Hysterical|Junior|Jester|Organ|Pipe Organ|Princess|Ralph|Superstar|Trinoids|Whisper|Zarvox/i.test(voice.name);
+}
+
+function playButtonSound(type) {
+  if (!state.isSoundEnabled) {
+    return;
+  }
+
+  const audioContext = ensureAudioContext();
+  if (!audioContext) {
+    return;
+  }
+
+  if (audioContext.state === 'suspended') {
+    audioContext.resume()
+      .then(() => playSoundSequence(audioContext, type))
+      .catch(() => {});
+    return;
+  }
+
+  playSoundSequence(audioContext, type);
+}
+
+function ensureAudioContext() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) {
+    return null;
+  }
+
+  if (!state.audioContext) {
+    state.audioContext = new AudioContextClass();
+  }
+
+  return state.audioContext;
+}
+
+function playSoundSequence(audioContext, type) {
+  const sounds = {
+    reveal: [
+      { frequency: 620, endFrequency: 430, duration: 0.11, offset: 0, type: 'triangle', peak: 0.038 },
+      { frequency: 740, endFrequency: 520, duration: 0.07, offset: 0.035, type: 'sine', peak: 0.024 },
+    ],
+    next: [
+      { frequency: 520, endFrequency: 760, duration: 0.075, offset: 0, type: 'sine', peak: 0.033 },
+      { frequency: 880, duration: 0.055, offset: 0.065, type: 'sine', peak: 0.026 },
+    ],
+    master: [
+      { frequency: 659, duration: 0.09, offset: 0, type: 'sine', peak: 0.032 },
+      { frequency: 784, duration: 0.11, offset: 0.075, type: 'sine', peak: 0.032 },
+      { frequency: 988, duration: 0.14, offset: 0.155, type: 'triangle', peak: 0.026 },
+    ],
+  };
+
+  const sequence = sounds[type] || sounds.reveal;
+  const start = audioContext.currentTime + 0.012;
+  sequence.forEach(tone => {
+    playTone(audioContext, tone, start);
+  });
+}
+
+function playTone(audioContext, tone, start) {
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+  const toneStart = start + tone.offset;
+  const toneEnd = toneStart + tone.duration;
+
+  oscillator.type = tone.type;
+  oscillator.frequency.setValueAtTime(tone.frequency, toneStart);
+  if (tone.endFrequency) {
+    oscillator.frequency.exponentialRampToValueAtTime(tone.endFrequency, toneEnd);
+  }
+
+  gain.gain.setValueAtTime(0.0001, toneStart);
+  gain.gain.exponentialRampToValueAtTime(tone.peak, toneStart + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, toneEnd);
+
+  oscillator.connect(gain);
+  gain.connect(audioContext.destination);
+  oscillator.start(toneStart);
+  oscillator.stop(toneEnd + 0.03);
 }
 
 function scheduleManualLookup() {
@@ -802,6 +1104,8 @@ function updateReviewControls(record) {
   els.reveal.disabled = !canReview;
   els.reveal.textContent = state.isRevealed ? 'Next' : 'Reveal';
   els.markMastered.disabled = !canReview;
+  els.playPronunciation.disabled = !canReview || !state.isSoundEnabled;
+  els.playPronunciation.hidden = !canReview;
 }
 
 function titleForFilter(filter) {
