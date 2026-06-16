@@ -36,6 +36,10 @@
             <span class="nav-icon" aria-hidden="true">M</span>
             <span class="nav-label">Mastered</span>
           </button>
+          <button class="filter" type="button" data-filter="add">
+            <span class="nav-icon" aria-hidden="true">+</span>
+            <span class="nav-label">Add word</span>
+          </button>
           <button class="filter secondary" type="button" data-filter="all">
             <span class="nav-icon" aria-hidden="true">A</span>
             <span class="nav-label">All words</span>
@@ -89,6 +93,30 @@
             <button id="reveal" type="button">Reveal</button>
             <button id="markMastered" type="button">Mastered</button>
           </div>
+        </section>
+
+        <section id="addWordPanel" class="manual-panel" aria-label="Add word">
+          <form id="addWordForm" class="manual-form">
+            <div class="manual-field manual-word-field">
+              <label for="manualWord">Word</label>
+              <div class="manual-input-row">
+                <input id="manualWord" type="text" autocomplete="off" spellcheck="false" placeholder="example">
+                <button id="lookupWord" class="icon-button" type="button">Lookup</button>
+              </div>
+            </div>
+
+            <div class="manual-field">
+              <label for="manualMeaning">Meaning</label>
+              <textarea id="manualMeaning" rows="9" placeholder="Meaning will appear here"></textarea>
+            </div>
+
+            <div id="lookupStatus" class="lookup-status" aria-live="polite"></div>
+
+            <div class="manual-actions">
+              <button id="saveWord" type="submit" disabled>Save to wordbook</button>
+              <button id="clearManualWord" type="button">Clear</button>
+            </div>
+          </form>
         </section>
 
         <section class="content-grid">

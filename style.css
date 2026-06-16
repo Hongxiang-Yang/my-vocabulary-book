@@ -564,6 +564,106 @@ input:focus {
   display: none;
 }
 
+.add-mode .review-deck,
+.add-mode .content-grid {
+  display: none;
+}
+
+.manual-panel {
+  display: none;
+  margin-top: 24px;
+}
+
+.add-mode .manual-panel {
+  display: block;
+}
+
+.manual-form {
+  display: grid;
+  width: min(760px, 100%);
+  gap: 18px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(26px);
+}
+
+.manual-field {
+  display: grid;
+  gap: 8px;
+}
+
+.manual-field label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.manual-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.manual-form input {
+  width: 100%;
+}
+
+textarea {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.58;
+  outline: none;
+  transition: background-color var(--motion), box-shadow var(--motion), border-color var(--motion);
+}
+
+textarea:focus {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.lookup-status {
+  min-height: 20px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.lookup-status[data-tone="success"] {
+  color: var(--accent);
+}
+
+.lookup-status[data-tone="error"] {
+  color: var(--danger);
+}
+
+.manual-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.manual-actions button {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: var(--text);
+  color: var(--bg);
+}
+
+#saveWord {
+  background: var(--accent);
+  color: white;
+}
+
 .word-list {
   display: grid;
   gap: 8px;
@@ -831,11 +931,27 @@ h4 {
     justify-content: stretch;
   }
 
+  .manual-form {
+    width: 100%;
+    padding: 18px;
+  }
+
+  .manual-input-row,
+  .manual-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .manual-actions {
+    display: grid;
+  }
+
   .review-mode .review-deck {
     min-height: 440px;
   }
 
   .review-actions button,
+  .manual-actions button,
+  .manual-input-row button,
   input {
     width: 100%;
   }

@@ -6,6 +6,9 @@ const RECORDS_CACHE_KEY = 'hongxiang-vocabulary-records-cache';
 const PENDING_ACTIONS_KEY = 'hongxiang-vocabulary-pending-actions';
 const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const WRITE_FLUSH_DELAY_MS = 650;
+const LOOKUP_DEBOUNCE_MS = 520;
+const DICTIONARY_API_BASE = 'https://api.dictionaryapi.dev/api/v2/entries/en/';
+const TRANSLATION_API_URL = 'https://api.mymemory.translated.net/get';
 
 const state = {
   records: [],
@@ -19,6 +22,8 @@ const state = {
   pendingActions: readPendingActions(),
   flushTimer: 0,
   isFlushing: false,
+  manualLookupTimer: 0,
+  lookupAbortController: null,
 };
 
 const els = {
@@ -41,6 +46,13 @@ const els = {
   themeSelect: document.querySelector('#themeSelect'),
   sidebarToggle: document.querySelector('#sidebarToggle'),
   sidebarToggleIcon: document.querySelector('#sidebarToggleIcon'),
+  addWordForm: document.querySelector('#addWordForm'),
+  manualWord: document.querySelector('#manualWord'),
+  manualMeaning: document.querySelector('#manualMeaning'),
+  lookupWord: document.querySelector('#lookupWord'),
+  lookupStatus: document.querySelector('#lookupStatus'),
+  saveWord: document.querySelector('#saveWord'),
+  clearManualWord: document.querySelector('#clearManualWord'),
   filters: [...document.querySelectorAll('.filter')],
 };
 
@@ -73,6 +85,17 @@ els.search.addEventListener('input', event => {
 });
 
 els.refresh.addEventListener('click', () => loadRecords());
+els.manualWord.addEventListener('input', () => {
+  scheduleManualLookup();
+  updateSaveState();
+});
+els.manualMeaning.addEventListener('input', updateSaveState);
+els.lookupWord.addEventListener('click', () => lookupManualWord());
+els.addWordForm.addEventListener('submit', event => {
+  event.preventDefault();
+  saveManualWord();
+});
+els.clearManualWord.addEventListener('click', resetManualForm);
 els.reveal.addEventListener('click', async () => {
   if (state.isRevealed) {
     moveToNextReviewWord();
@@ -94,6 +117,9 @@ els.filters.forEach(button => {
     state.selectedId = '';
     state.isRevealed = false;
     render();
+    if (state.filter === 'add') {
+      window.setTimeout(() => els.manualWord.focus(), 0);
+    }
   });
 });
 
@@ -188,6 +214,7 @@ function render() {
   const selected = selectedRecord(filtered);
   state.selectedId = selected?.id || '';
   els.appShell.classList.toggle('review-mode', state.filter === 'review');
+  els.appShell.classList.toggle('add-mode', state.filter === 'add');
 
   els.filters.forEach(button => {
     button.classList.toggle('active', button.dataset.filter === state.filter);
@@ -221,6 +248,10 @@ function selectedRecord(filtered) {
 }
 
 function filteredRecords() {
+  if (state.filter === 'add') {
+    return state.records;
+  }
+
   return state.records.filter(record => {
     const matchesFilter = (
       state.filter === 'all' ||
@@ -398,12 +429,14 @@ async function flushActions() {
   const actions = state.pendingActions.slice(0, 12);
 
   try {
-    await postAction({
-      action: actions.length === 1 ? actions[0].action : 'batch',
-      status: actions[0]?.status || '',
-      word: actions[0]?.word || '',
-      items: actions.length === 1 ? '' : JSON.stringify(actions),
-    });
+    if (actions.length === 1) {
+      await postAction(actions[0]);
+    } else {
+      await postAction({
+        action: 'batch',
+        items: JSON.stringify(actions),
+      });
+    }
     state.pendingActions.splice(0, actions.length);
     writePendingActions();
   } finally {
@@ -478,6 +511,260 @@ function writePendingActions() {
   }
 }
 
+function scheduleManualLookup() {
+  window.clearTimeout(state.manualLookupTimer);
+
+  const word = normalizedManualWord();
+  if (!word) {
+    setLookupStatus('');
+    return;
+  }
+
+  if (!looksLikeEnglishText(word)) {
+    setLookupStatus('Add the meaning manually for this entry.');
+    return;
+  }
+
+  setLookupStatus('Ready to lookup');
+  state.manualLookupTimer = window.setTimeout(() => {
+    lookupManualWord({ automatic: true });
+  }, LOOKUP_DEBOUNCE_MS);
+}
+
+async function lookupManualWord(options = {}) {
+  const word = normalizedManualWord();
+  if (!word) {
+    setLookupStatus('Enter a word first.', 'error');
+    return;
+  }
+
+  if (!looksLikeEnglishText(word)) {
+    setLookupStatus('Add the meaning manually for this entry.');
+    updateSaveState();
+    return;
+  }
+
+  state.lookupAbortController?.abort();
+  const controller = new AbortController();
+  state.lookupAbortController = controller;
+  els.lookupWord.disabled = true;
+  setLookupStatus(options.automatic ? 'Matching meaning...' : 'Looking up...');
+
+  try {
+    const result = await fetchLookupResult(word, controller.signal);
+    if (controller.signal.aborted || normalizedManualWord() !== word) {
+      return;
+    }
+
+    els.manualMeaning.value = result.translation;
+    els.manualMeaning.dataset.service = result.service;
+    els.manualMeaning.dataset.fromLanguage = result.fromLanguage;
+    els.manualMeaning.dataset.toLanguage = result.toLanguage;
+    setLookupStatus('Meaning matched.', 'success');
+    updateSaveState();
+  } catch (error) {
+    if (!controller.signal.aborted) {
+      setLookupStatus('Could not match automatically. You can edit the meaning manually.', 'error');
+      updateSaveState();
+    }
+  } finally {
+    if (state.lookupAbortController === controller) {
+      state.lookupAbortController = null;
+      els.lookupWord.disabled = false;
+    }
+  }
+}
+
+async function fetchLookupResult(word, signal) {
+  const dictionaryPromise = isSingleEnglishWord(word)
+    ? fetchDictionaryEntry(word, signal)
+    : Promise.reject(new Error('Dictionary lookup supports single words'));
+  const translationPromise = fetchChineseTranslation(word, signal);
+  const [dictionaryResult, translationResult] = await Promise.allSettled([
+    dictionaryPromise,
+    translationPromise,
+  ]);
+
+  const lines = [];
+  const chinese = translationResult.status === 'fulfilled' ? translationResult.value : '';
+  if (chinese) {
+    lines.push(`Chinese: ${chinese}`);
+  }
+
+  if (dictionaryResult.status === 'fulfilled') {
+    const details = dictionaryResult.value;
+    if (details.phonetic) {
+      lines.push(`Pronunciation: ${details.phonetic}`);
+    }
+    details.definitions.forEach(item => {
+      lines.push(`${item.partOfSpeech ? `${item.partOfSpeech}: ` : ''}${item.definition}`);
+    });
+    if (details.example) {
+      lines.push(`Example: ${details.example}`);
+    }
+  }
+
+  if (!lines.length) {
+    throw new Error('No lookup result');
+  }
+
+  return {
+    translation: lines.join('\n'),
+    service: 'Web dictionary lookup',
+    fromLanguage: 'en',
+    toLanguage: chinese ? 'zh-CN' : 'en',
+  };
+}
+
+async function fetchDictionaryEntry(word, signal) {
+  const response = await fetch(`${DICTIONARY_API_BASE}${encodeURIComponent(word.toLowerCase())}`, { signal });
+  if (!response.ok) {
+    throw new Error('Dictionary lookup failed');
+  }
+
+  const data = await response.json();
+  const entries = Array.isArray(data) ? data : [];
+  const firstEntry = entries[0] || {};
+  const phonetic = firstEntry.phonetic
+    || (firstEntry.phonetics || []).find(item => item.text)?.text
+    || '';
+  const definitions = [];
+  let example = '';
+
+  entries.forEach(entry => {
+    (entry.meanings || []).forEach(meaning => {
+      (meaning.definitions || []).forEach(definition => {
+        if (definitions.length >= 4 || !definition.definition) {
+          return;
+        }
+        definitions.push({
+          partOfSpeech: meaning.partOfSpeech || '',
+          definition: definition.definition,
+        });
+        if (!example && definition.example) {
+          example = definition.example;
+        }
+      });
+    });
+  });
+
+  if (!definitions.length && !phonetic) {
+    throw new Error('No dictionary result');
+  }
+
+  return { phonetic, definitions, example };
+}
+
+async function fetchChineseTranslation(word, signal) {
+  const url = new URL(TRANSLATION_API_URL);
+  url.searchParams.set('q', word);
+  url.searchParams.set('langpair', 'en|zh-CN');
+
+  const response = await fetch(url.toString(), { signal });
+  if (!response.ok) {
+    throw new Error('Translation lookup failed');
+  }
+
+  const data = await response.json();
+  const translatedText = String(data.responseData?.translatedText || '').trim();
+  if (!translatedText || translatedText.toLowerCase() === word.toLowerCase()) {
+    return '';
+  }
+  return translatedText;
+}
+
+function saveManualWord() {
+  const word = normalizedManualWord();
+  const translation = els.manualMeaning.value.trim();
+
+  if (!word || !translation) {
+    setLookupStatus('Word and meaning are required.', 'error');
+    updateSaveState();
+    return;
+  }
+
+  const previousRecords = state.records.map(item => ({ ...item }));
+  const previousSelectedId = state.selectedId;
+  const previousFilter = state.filter;
+  const existing = state.records.find(record => record.word.toLowerCase() === word.toLowerCase());
+  const now = new Date().toISOString();
+  const record = {
+    id: existing?.id || createRecordId(word),
+    word,
+    translation,
+    service: els.manualMeaning.dataset.service || 'Manual entry',
+    fromLanguage: els.manualMeaning.dataset.fromLanguage || 'auto',
+    toLanguage: els.manualMeaning.dataset.toLanguage || 'zh-CN',
+    source: 'Vocabulary web',
+    createdAt: existing?.createdAt || now,
+    reviewCount: existing?.reviewCount || 0,
+    lastReviewedAt: existing?.lastReviewedAt || '',
+    status: 'learning',
+  };
+
+  state.records = [
+    record,
+    ...state.records.filter(item => item.word.toLowerCase() !== word.toLowerCase()),
+  ].sort(sortRecords);
+  state.filter = 'review';
+  state.selectedId = record.id;
+  state.isRevealed = false;
+  writeRecordsCache(state.records);
+  resetManualForm();
+  render();
+
+  enqueueAction({
+    action: 'upsert',
+    ...record,
+  }, () => {
+    state.records = previousRecords;
+    state.selectedId = previousSelectedId;
+    state.filter = previousFilter;
+    writeRecordsCache(state.records);
+    render();
+  });
+}
+
+function resetManualForm() {
+  state.lookupAbortController?.abort();
+  window.clearTimeout(state.manualLookupTimer);
+  els.manualWord.value = '';
+  els.manualMeaning.value = '';
+  delete els.manualMeaning.dataset.service;
+  delete els.manualMeaning.dataset.fromLanguage;
+  delete els.manualMeaning.dataset.toLanguage;
+  setLookupStatus('');
+  updateSaveState();
+}
+
+function updateSaveState() {
+  els.saveWord.disabled = !(normalizedManualWord() && els.manualMeaning.value.trim());
+}
+
+function setLookupStatus(message, tone = '') {
+  els.lookupStatus.textContent = message;
+  els.lookupStatus.dataset.tone = tone;
+}
+
+function normalizedManualWord() {
+  return els.manualWord.value.trim().replace(/\s+/g, ' ');
+}
+
+function looksLikeEnglishText(value) {
+  return /^[a-z][a-z\s'-]*$/i.test(value);
+}
+
+function isSingleEnglishWord(value) {
+  return /^[a-z][a-z'-]*$/i.test(value);
+}
+
+function createRecordId(word) {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+  return `manual-${word.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}`;
+}
+
 function updateReviewControls(record) {
   const canReview = Boolean(record);
   els.reveal.disabled = !canReview;
@@ -489,6 +776,7 @@ function titleForFilter(filter) {
   return {
     review: 'Check mastery',
     mastered: 'Mastered',
+    add: 'Add word',
     all: 'All words',
   }[filter] || 'Check mastery';
 }
@@ -504,6 +792,9 @@ function listSubtitle(record) {
 function summaryText(filtered, learningRecords) {
   if (state.filter === 'review') {
     return `${learningRecords.length} word${learningRecords.length === 1 ? '' : 's'} waiting for check`;
+  }
+  if (state.filter === 'add') {
+    return `${state.records.length} word${state.records.length === 1 ? '' : 's'} saved`;
   }
   return `${filtered.length} word${filtered.length === 1 ? '' : 's'} shown`;
 }
