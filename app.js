@@ -576,6 +576,17 @@ async function lookupManualWord(options = {}) {
 }
 
 async function fetchLookupResult(word, signal) {
+  try {
+    const youdaoResult = await fetchYoudaoLookup(word);
+    if (youdaoResult.translation) {
+      return youdaoResult;
+    }
+  } catch (error) {
+    if (signal.aborted) {
+      throw error;
+    }
+  }
+
   const dictionaryPromise = isSingleEnglishWord(word)
     ? fetchDictionaryEntry(word, signal)
     : Promise.reject(new Error('Dictionary lookup supports single words'));
@@ -613,6 +624,25 @@ async function fetchLookupResult(word, signal) {
     service: 'Web dictionary lookup',
     fromLanguage: 'en',
     toLanguage: chinese ? 'zh-CN' : 'en',
+  };
+}
+
+async function fetchYoudaoLookup(word) {
+  const data = await postAction({
+    action: 'lookup',
+    lookupWord: word,
+  });
+  const result = data.result || {};
+
+  if (!result.translation) {
+    throw new Error('No Youdao lookup result');
+  }
+
+  return {
+    translation: result.translation,
+    service: result.service || 'Youdao Dictionary',
+    fromLanguage: result.fromLanguage || 'English',
+    toLanguage: result.toLanguage || 'Simplified-Chinese',
   };
 }
 
