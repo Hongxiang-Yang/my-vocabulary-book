@@ -736,12 +736,14 @@ function saveManualWord() {
     record,
     ...state.records.filter(item => item.word.toLowerCase() !== word.toLowerCase()),
   ].sort(sortRecords);
-  state.filter = 'review';
+  state.filter = 'add';
   state.selectedId = record.id;
   state.isRevealed = false;
   writeRecordsCache(state.records);
   resetManualForm();
+  setLookupStatus(`Saved "${word}".`, 'success');
   render();
+  window.setTimeout(() => els.manualWord.focus(), 0);
 
   enqueueAction({
     action: 'upsert',
